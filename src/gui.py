@@ -4,27 +4,34 @@ from tkinter import ttk
 import requests
 from amiibo import Amiibo
 
-class AmiiboApp:
+class Gui:
     def __init__(self, root):
         self.root = root
         self.root.title("Amiibo App")
         self.amiibos = []
 
         # Configuración de la interfaz
-        tk.Label(root, text="Buscar por columna:").grid(row=0, column=0, padx=10, pady=5)
-        self.columna_var = tk.StringVar(value="name")
-        tk.Entry(root, textvariable=self.columna_var).grid(row=0, column=1, padx=10, pady=5)
+        self.filtros_frame = tk.Frame(root)
+        self.filtros_frame.grid(row=0, column=0, padx=10, pady=10)
 
-        tk.Label(root, text="Valor a buscar:").grid(row=1, column=0, padx=10, pady=5)
-        self.valor_var = tk.StringVar()
-        tk.Entry(root, textvariable=self.valor_var).grid(row=1, column=1, padx=10, pady=5)
+        # Crear campos de búsqueda para cada columna
+        self.columnas = Amiibo.valid_attributes  # Usar los atributos válidos de Amiibo
+        
+        self.filtro_vars = {}
+        for idx, columna in enumerate(self.columnas):
+            tk.Label(self.filtros_frame, text=f"{columna}:").grid(row=idx, column=0, padx=5, pady=5)
+            entry_var = tk.StringVar()
+            entry = tk.Entry(self.filtros_frame, textvariable=entry_var)
+            entry.grid(row=idx, column=1, padx=5, pady=5)
+            self.filtro_vars[columna] = entry_var  # Guardar solo el valor de entrada
 
-        tk.Button(root, text="Buscar", command=self.buscar).grid(row=2, column=0, padx=10, pady=5)
-        tk.Button(root, text="Exportar a CSV", command=self.exportar).grid(row=3, column=0, columnspan=2, padx=10, pady=5)
+        tk.Button(root, text="Buscar", command=self.buscar).grid(row=len(self.columnas), column=0, padx=10, pady=5)
+        tk.Button(root, text="Restablecer", command=self.restablecer).grid(row=len(self.columnas), column=1, padx=10, pady=5)
+        tk.Button(root, text="Exportar a CSV", command=self.exportar).grid(row=len(self.columnas), column=2, padx=10, pady=5)
 
         # Configurar el Treeview para mostrar los amiibos
         self.tree = ttk.Treeview(root, columns=("Amiibo Series", "Character", "Game Series", "Name", "Image", "Type"), show='headings')
-        self.tree.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+        self.tree.grid(row=len(self.columnas) + 1, column=0, columnspan=3, padx=10, pady=10)
 
         # Definir encabezados
         for col in self.tree["columns"]:
@@ -42,7 +49,7 @@ class AmiiboApp:
             data = response.json()
             self.amiibos = [Amiibo(item['amiiboSeries'], item['character'], item['gameSeries'], 
                                    item['name'], item['image'], item['type']) for item in data]
-            #messagebox.showinfo("Cargar Datos", "Datos cargados correctamente.")
+            messagebox.showinfo("Cargar Datos", "Datos cargados correctamente.")
             self.mostrar_datos()  # Llamar a la función para mostrar datos en la tabla
         except requests.exceptions.RequestException as e:
             messagebox.showerror("Error de Carga", f"No se pudieron cargar los datos:\n{e}")
@@ -58,22 +65,23 @@ class AmiiboApp:
                                                  amiibo.name, amiibo.image, amiibo.type))
 
     def buscar(self):
-        columna = self.columna_var.get()
-        valor = self.valor_var.get()
+        # Obtener los criterios de búsqueda
+        filtros = {}
+        for columna, entry_var in self.filtro_vars.items():
+            valor = entry_var.get().strip()
+            if valor:  # Solo agregar si hay valor
+                filtros[columna] = valor
 
-        # Verificar si la columna es un atributo válido de la clase Amiibo
-        if columna not in Amiibo.valid_attributes:
-            messagebox.showwarning("Atributo no válido", f"El atributo '{columna}' no existe.")
+        if not filtros:
+            messagebox.showwarning("Sin Filtros", "Por favor, ingrese al menos un filtro.")
             return
 
-        if not self.amiibos:
-            messagebox.showwarning("Sin Datos", "Primero debes cargar los datos.")
-            return
+        # Filtrar los amiibos según los criterios
+        resultado = self.amiibos
+        for columna, valor in filtros.items():
+            resultado = [amiibo for amiibo in resultado if getattr(amiibo, columna, None) == valor]
 
-        resultado = Amiibo.buscar_por_atributo(self.amiibos, columna, valor)
         self.mostrar_resultados(resultado)
-
-
 
     def mostrar_resultados(self, resultados):
         # Limpiar el Treeview antes de mostrar nuevos resultados
@@ -87,9 +95,17 @@ class AmiiboApp:
         else:
             messagebox.showinfo("Resultados de Búsqueda", "No se encontraron resultados.")
 
+    def restablecer(self):
+        # Limpiar todos los campos de entrada
+        for entry_var in self.filtro_vars.values():
+            entry_var.set("")  # Limpiar el contenido de la entrada
+
+        # Mostrar todos los amiibos de nuevo
+        self.mostrar_datos()
+
     def exportar(self):
         if not self.amiibos:
             messagebox.showwarning("Sin Datos", "Primero debes cargar los datos.")
             return
         ruta_csv = Amiibo.exportar_a_csv(self.amiibos)
-        messagebox.showinfo("Exportar a CSV", f"Datos exportados a {ruta_csv}")
+        messagebox.showinfo("Exportar a CSV", f"Datos exportados a {ruta_csv}") 
